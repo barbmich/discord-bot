@@ -1,36 +1,74 @@
-const Discord = require("discord.js");
-const {
-  prefix,
-  meaning_of_life,
-  passwords_array,
-  secret_passcodes,
-} = require("./config.json");
-const client = new Discord.Client();
 require("dotenv").config();
-
+const Discord = require("discord.js");
+const fs = require("fs");
+const { prefix } = require("./config.json");
 const token = process.env.BOT_TOKEN;
+const bot = new Discord.Client();
 
-client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}!`);
+bot.commands = new Discord.Collection();
+const commandFiles = fs
+  .readdirSync("./commands")
+  .filter((file) => file.endsWith(".js"));
+for (const file of commandFiles) {
+  const command = require(`./commands/${file}`);
+  bot.commands.set(command.name, command);
+}
+
+const cooldowns = new Discord.Collection();
+
+bot.once("ready", () => {
+  console.log(`Logged in as ${bot.user.tag}!`);
 });
 
-client.on("message", (msg) => {
-  if (!msg.content.startsWith(prefix) || msg.author.bot) return;
+bot.on("message", (message) => {
+  if (!message.content.startsWith(prefix) || message.author.bot) return;
 
-  const args = msg.content.slice(prefix.length).trim().split(/ +/);
-  const command = args.shift().toLowerCase();
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
+  const commandName = args.shift().toLowerCase();
 
-  if (command === "ping") {
-    msg.channel.send("Pong!");
-  } else if (command === "beep") {
-    msg.channel.send("Boop!");
-  } else if (command === "server") {
-    msg.channel.send(
-      `nome del server: ${msg.guild.name}. non so cosa sia guild.region ma: ${msg.guild.region}`
+  const command =
+    client.commands.get(commandName) ||
+    client.commands.find(
+      (cmd) => cmd.aliases && cmd.aliases.includes(commandName)
     );
-  } else if (command === "gabagool") {
-    msg.reply("gabagool? Over heere 👇️👇️");
+  if (!command) return;
+
+  if (command.args && !args.length) {
+    return message.channel.send(
+      `You didn't provide any arguments, ${message.author}!`
+    );
+  }
+
+  if (!cooldowns.has(command.name)) {
+    cooldowns.set(command.name, new Discord.Collection());
+  }
+
+  const now = Date.now();
+  const timestamps = cooldowns.get(command.name);
+  const cooldownAmount = (command.cooldown || 3) * 1000;
+
+  if (timestamps.has(message.author.id)) {
+    const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
+
+    if (now < expirationTime) {
+      const timeLeft = (expirationTime - now) / 1000;
+      return message.reply(
+        `please wait ${timeLeft.toFixed(
+          1
+        )} more second(s) before reusing the \`${command.name}\` command.`
+      );
+    }
+
+    timestamps.set(message.author.id, now);
+    setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
+  }
+
+  try {
+    command.execute(message, args);
+  } catch (error) {
+    console.error(error);
+    message.reply("error executing requested command.");
   }
 });
 
-client.login(token);
+bot.login(token);

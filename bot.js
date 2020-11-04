@@ -27,8 +27,8 @@ bot.on("message", (message) => {
   const commandName = args.shift().toLowerCase();
 
   const command =
-    client.commands.get(commandName) ||
-    client.commands.find(
+    bot.commands.get(commandName) ||
+    bot.commands.find(
       (cmd) => cmd.aliases && cmd.aliases.includes(commandName)
     );
   if (!command) return;
